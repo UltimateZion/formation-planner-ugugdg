@@ -119,76 +119,76 @@ export default function FormationScreen() {
     const { width, height } = fieldDimensions;
     const playersCount = players.length;
     
-    // GAA formation arrangement - typical 15 player setup adapted for any number
+    // GAA formation arrangement - rotated to vertical orientation (goals top/bottom)
     const arrangedPlayers = players.map((player, index) => {
       let x, y;
       
       if (playersCount <= 15) {
-        // Traditional GAA positions
+        // Traditional GAA positions - rotated 90 degrees
         switch (index) {
           case 0: // Goalkeeper
-            x = width * 0.05;
-            y = height * 0.5;
+            x = width * 0.5;
+            y = height * 0.05;
             break;
           case 1: // Right Corner Back
-            x = width * 0.15;
-            y = height * 0.25;
+            x = width * 0.25;
+            y = height * 0.15;
             break;
           case 2: // Full Back
-            x = width * 0.15;
-            y = height * 0.5;
+            x = width * 0.5;
+            y = height * 0.15;
             break;
           case 3: // Left Corner Back
-            x = width * 0.15;
-            y = height * 0.75;
+            x = width * 0.75;
+            y = height * 0.15;
             break;
           case 4: // Right Half Back
-            x = width * 0.35;
-            y = height * 0.25;
+            x = width * 0.25;
+            y = height * 0.35;
             break;
           case 5: // Centre Half Back
-            x = width * 0.35;
-            y = height * 0.5;
+            x = width * 0.5;
+            y = height * 0.35;
             break;
           case 6: // Left Half Back
-            x = width * 0.35;
-            y = height * 0.75;
+            x = width * 0.75;
+            y = height * 0.35;
             break;
           case 7: // Midfield Right
-            x = width * 0.5;
-            y = height * 0.4;
+            x = width * 0.4;
+            y = height * 0.5;
             break;
           case 8: // Midfield Left
-            x = width * 0.5;
-            y = height * 0.6;
+            x = width * 0.6;
+            y = height * 0.5;
             break;
           case 9: // Right Half Forward
-            x = width * 0.65;
-            y = height * 0.25;
+            x = width * 0.25;
+            y = height * 0.65;
             break;
           case 10: // Centre Half Forward
-            x = width * 0.65;
-            y = height * 0.5;
+            x = width * 0.5;
+            y = height * 0.65;
             break;
           case 11: // Left Half Forward
-            x = width * 0.65;
-            y = height * 0.75;
+            x = width * 0.75;
+            y = height * 0.65;
             break;
           case 12: // Right Corner Forward
-            x = width * 0.85;
-            y = height * 0.25;
+            x = width * 0.25;
+            y = height * 0.85;
             break;
           case 13: // Full Forward
-            x = width * 0.85;
-            y = height * 0.5;
+            x = width * 0.5;
+            y = height * 0.85;
             break;
           case 14: // Left Corner Forward
-            x = width * 0.85;
-            y = height * 0.75;
+            x = width * 0.75;
+            y = height * 0.85;
             break;
           default:
-            x = width * 0.7 + (index - 15) * 30;
-            y = height * 0.5;
+            x = width * 0.5;
+            y = height * 0.7 + (index - 15) * 30;
         }
       } else {
         // For more than 15 players, distribute evenly
@@ -242,20 +242,20 @@ export default function FormationScreen() {
           console.log('GAA Field dimensions:', width, height);
         }}
       >
-        {/* GAA Field markings */}
+        {/* GAA Field markings - rotated to vertical orientation */}
         
-        {/* Center line */}
+        {/* Center line (horizontal) */}
         <View style={styles.centerLine} />
         
-        {/* 45m lines */}
+        {/* 45m lines (horizontal) */}
         <View style={styles.line45m1} />
         <View style={styles.line45m2} />
         
-        {/* 21m lines (65m from goals) */}
+        {/* 21m lines (horizontal) */}
         <View style={styles.line21m1} />
         <View style={styles.line21m2} />
         
-        {/* Goal areas */}
+        {/* Goal areas (top and bottom) */}
         <View style={styles.goalArea1} />
         <View style={styles.goalArea2} />
         
@@ -263,7 +263,7 @@ export default function FormationScreen() {
         <View style={styles.smallRectangle1} />
         <View style={styles.smallRectangle2} />
         
-        {/* Goals with posts */}
+        {/* Goals with posts (top and bottom) */}
         <View style={styles.goal1}>
           <View style={styles.goalPost} />
           <View style={styles.goalPost} />
@@ -296,7 +296,7 @@ export default function FormationScreen() {
           Drag players to position them on the GAA pitch
         </Text>
         <Text style={styles.gaaInfo}>
-          GAA pitch: 130-145m × 80-90m with H-shaped goals
+          GAA pitch: 130-145m × 80-90m with H-shaped goals at top and bottom
         </Text>
       </View>
     </SafeAreaView>
@@ -355,145 +355,148 @@ const styles = StyleSheet.create({
     boxShadow: '0px 4px 12px rgba(0, 0, 0, 0.2)',
     elevation: 4,
   },
+  // Rotated field markings - now horizontal lines
   centerLine: {
     position: 'absolute',
-    top: 0,
-    left: '50%',
-    width: 2,
-    height: '100%',
+    left: 0,
+    top: '50%',
+    width: '100%',
+    height: 2,
     backgroundColor: '#FFFFFF',
-    marginLeft: -1,
+    marginTop: -1,
   },
   line45m1: {
     position: 'absolute',
-    top: 0,
-    left: '25%',
-    width: 2,
-    height: '100%',
+    left: 0,
+    top: '25%',
+    width: '100%',
+    height: 2,
     backgroundColor: '#FFFFFF',
-    marginLeft: -1,
+    marginTop: -1,
   },
   line45m2: {
     position: 'absolute',
-    top: 0,
-    right: '25%',
-    width: 2,
-    height: '100%',
+    left: 0,
+    bottom: '25%',
+    width: '100%',
+    height: 2,
     backgroundColor: '#FFFFFF',
-    marginRight: -1,
+    marginBottom: -1,
   },
   line21m1: {
     position: 'absolute',
-    top: 0,
-    left: '15%',
-    width: 2,
-    height: '100%',
+    left: 0,
+    top: '15%',
+    width: '100%',
+    height: 2,
     backgroundColor: '#FFFFFF',
-    marginLeft: -1,
+    marginTop: -1,
   },
   line21m2: {
     position: 'absolute',
-    top: 0,
-    right: '15%',
-    width: 2,
-    height: '100%',
+    left: 0,
+    bottom: '15%',
+    width: '100%',
+    height: 2,
     backgroundColor: '#FFFFFF',
-    marginRight: -1,
+    marginBottom: -1,
   },
+  // Goal areas at top and bottom
   goalArea1: {
     position: 'absolute',
-    top: '30%',
-    left: 0,
-    width: '15%',
-    height: '40%',
+    left: '30%',
+    top: 0,
+    width: '40%',
+    height: '15%',
     borderWidth: 2,
     borderColor: '#FFFFFF',
-    borderLeftWidth: 0,
+    borderTopWidth: 0,
   },
   goalArea2: {
     position: 'absolute',
-    top: '30%',
-    right: 0,
-    width: '15%',
-    height: '40%',
+    left: '30%',
+    bottom: 0,
+    width: '40%',
+    height: '15%',
     borderWidth: 2,
     borderColor: '#FFFFFF',
-    borderRightWidth: 0,
+    borderBottomWidth: 0,
   },
   smallRectangle1: {
     position: 'absolute',
-    top: '42%',
-    left: 0,
-    width: '8%',
-    height: '16%',
+    left: '42%',
+    top: 0,
+    width: '16%',
+    height: '8%',
     borderWidth: 2,
     borderColor: '#FFFFFF',
-    borderLeftWidth: 0,
+    borderTopWidth: 0,
   },
   smallRectangle2: {
     position: 'absolute',
-    top: '42%',
-    right: 0,
-    width: '8%',
-    height: '16%',
+    left: '42%',
+    bottom: 0,
+    width: '16%',
+    height: '8%',
     borderWidth: 2,
     borderColor: '#FFFFFF',
-    borderRightWidth: 0,
+    borderBottomWidth: 0,
   },
+  // Goals at top and bottom with H-shape
   goal1: {
     position: 'absolute',
-    top: '46%',
-    left: -3,
-    width: 6,
-    height: '8%',
-    flexDirection: 'row',
+    left: '46%',
+    top: -3,
+    width: '8%',
+    height: 6,
+    flexDirection: 'column',
     justifyContent: 'space-between',
   },
   goal2: {
     position: 'absolute',
-    top: '46%',
-    right: -3,
-    width: 6,
-    height: '8%',
-    flexDirection: 'row',
+    left: '46%',
+    bottom: -3,
+    width: '8%',
+    height: 6,
+    flexDirection: 'column',
     justifyContent: 'space-between',
   },
   goalPost: {
-    width: 3,
-    height: '200%',
+    width: '200%',
+    height: 3,
     backgroundColor: '#FFFFFF',
-    marginTop: '-50%',
+    marginLeft: '-50%',
   },
   crossbar: {
     position: 'absolute',
-    top: '50%',
-    left: 0,
-    right: 0,
-    height: 3,
+    left: '50%',
+    top: 0,
+    bottom: 0,
+    width: 3,
     backgroundColor: '#FFFFFF',
-    marginTop: -1.5,
+    marginLeft: -1.5,
   },
   penaltySpot1: {
     position: 'absolute',
-    top: '48%',
-    left: '11%',
+    left: '48%',
+    top: '11%',
     width: 6,
     height: 6,
     borderRadius: 3,
     backgroundColor: '#FFFFFF',
-    marginTop: -3,
     marginLeft: -3,
+    marginTop: -3,
   },
   penaltySpot2: {
     position: 'absolute',
-    top: '48%',
-    right: '11%',
+    left: '48%',
+    bottom: '11%',
     width: 6,
     height: 6,
     borderRadius: 3,
     backgroundColor: '#FFFFFF',
-    marginTop: -3,
-    marginRight: -3,
+    marginLeft: -3,
+    marginBottom: -3,
   },
   player: {
     position: 'absolute',
