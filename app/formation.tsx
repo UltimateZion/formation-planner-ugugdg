@@ -28,50 +28,66 @@ interface DraggablePlayerProps {
   fieldHeight: number;
 }
 
+const PLAYER_SIZE = 60;
+
 const DraggablePlayer: React.FC<DraggablePlayerProps> = ({ 
   player, 
   onPositionChange, 
   fieldWidth, 
   fieldHeight 
 }) => {
-  const pan = useRef(new Animated.ValueXY({ x: player.x, y: player.y })).current;
   const [isDragging, setIsDragging] = useState(false);
+  const [currentPosition, setCurrentPosition] = useState({ x: player.x, y: player.y });
 
   const panResponder = useRef(
     PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
       onMoveShouldSetPanResponder: () => true,
       onPanResponderGrant: () => {
+        console.log(`Started dragging player ${player.name}`);
         setIsDragging(true);
-        pan.setOffset({
-          x: (pan.x as any)._value,
-          y: (pan.y as any)._value,
-        });
       },
-      onPanResponderMove: Animated.event(
-        [null, { dx: pan.x, dy: pan.y }],
-        { useNativeDriver: false }
-      ),
+      onPanResponderMove: (_, gestureState) => {
+        // Calculate new position with boundary constraints
+        const newX = Math.max(0, Math.min(fieldWidth - PLAYER_SIZE, player.x + gestureState.dx));
+        const newY = Math.max(0, Math.min(fieldHeight - PLAYER_SIZE, player.y + gestureState.dy));
+        
+        setCurrentPosition({ x: newX, y: newY });
+        console.log(`Moving player ${player.name} to (${newX.toFixed(1)}, ${newY.toFixed(1)})`);
+      },
       onPanResponderRelease: (_, gestureState) => {
+        console.log(`Released player ${player.name}`);
         setIsDragging(false);
-        pan.flattenOffset();
         
-        const newX = Math.max(0, Math.min(fieldWidth - 60, (pan.x as any)._value));
-        const newY = Math.max(0, Math.min(fieldHeight - 60, (pan.y as any)._value));
+        // Final position calculation with boundary constraints
+        const finalX = Math.max(0, Math.min(fieldWidth - PLAYER_SIZE, player.x + gestureState.dx));
+        const finalY = Math.max(0, Math.min(fieldHeight - PLAYER_SIZE, player.y + gestureState.dy));
         
-        pan.setValue({ x: newX, y: newY });
-        onPositionChange(player.id, newX, newY);
+        setCurrentPosition({ x: finalX, y: finalY });
+        onPositionChange(player.id, finalX, finalY);
         
-        console.log(`Player ${player.name} moved to (${newX}, ${newY})`);
+        console.log(`Player ${player.name} final position: (${finalX}, ${finalY})`);
+      },
+      onPanResponderTerminate: () => {
+        console.log(`Terminated dragging player ${player.name}`);
+        setIsDragging(false);
+        setCurrentPosition({ x: player.x, y: player.y });
       },
     })
   ).current;
 
+  // Update current position when player prop changes (e.g., from formation changes)
+  React.useEffect(() => {
+    setCurrentPosition({ x: player.x, y: player.y });
+  }, [player.x, player.y]);
+
   return (
-    <Animated.View
+    <View
       style={[
         styles.player,
         {
-          transform: [{ translateX: pan.x }, { translateY: pan.y }],
+          left: currentPosition.x,
+          top: currentPosition.y,
           zIndex: isDragging ? 1000 : 1,
           elevation: isDragging ? 10 : 2,
         },
@@ -82,7 +98,7 @@ const DraggablePlayer: React.FC<DraggablePlayerProps> = ({
       <Text style={styles.playerText} numberOfLines={1}>
         {player.name}
       </Text>
-    </Animated.View>
+    </View>
   );
 };
 
@@ -100,6 +116,7 @@ export default function FormationScreen() {
   const [fieldDimensions, setFieldDimensions] = useState({ width: 0, height: 0 });
 
   const handlePositionChange = (id: string, x: number, y: number) => {
+    console.log(`Updating player ${id} position to (${x}, ${y})`);
     setPlayers(prev => prev.map(player => 
       player.id === id ? { ...player, x, y } : player
     ));
@@ -108,8 +125,8 @@ export default function FormationScreen() {
   const resetPositions = () => {
     const resetPlayers = players.map((player, index) => ({
       ...player,
-      x: Math.random() * (fieldDimensions.width - 60) + 30,
-      y: Math.random() * (fieldDimensions.height - 60) + 30,
+      x: Math.random() * (fieldDimensions.width - PLAYER_SIZE) + 10,
+      y: Math.random() * (fieldDimensions.height - PLAYER_SIZE) + 10,
     }));
     setPlayers(resetPlayers);
     console.log('Reset all player positions');
@@ -119,6 +136,8 @@ export default function FormationScreen() {
     const { width, height } = fieldDimensions;
     const playersCount = players.length;
     
+    console.log(`Arranging ${playersCount} players in GAA formation on field ${width}x${height}`);
+    
     // GAA formation arrangement - rotated to vertical orientation (goals top/bottom)
     const arrangedPlayers = players.map((player, index) => {
       let x, y;
@@ -127,68 +146,68 @@ export default function FormationScreen() {
         // Traditional GAA positions - rotated 90 degrees
         switch (index) {
           case 0: // Goalkeeper
-            x = width * 0.5;
+            x = width * 0.5 - PLAYER_SIZE / 2;
             y = height * 0.05;
             break;
           case 1: // Right Corner Back
-            x = width * 0.25;
+            x = width * 0.25 - PLAYER_SIZE / 2;
             y = height * 0.15;
             break;
           case 2: // Full Back
-            x = width * 0.5;
+            x = width * 0.5 - PLAYER_SIZE / 2;
             y = height * 0.15;
             break;
           case 3: // Left Corner Back
-            x = width * 0.75;
+            x = width * 0.75 - PLAYER_SIZE / 2;
             y = height * 0.15;
             break;
           case 4: // Right Half Back
-            x = width * 0.25;
+            x = width * 0.25 - PLAYER_SIZE / 2;
             y = height * 0.35;
             break;
           case 5: // Centre Half Back
-            x = width * 0.5;
+            x = width * 0.5 - PLAYER_SIZE / 2;
             y = height * 0.35;
             break;
           case 6: // Left Half Back
-            x = width * 0.75;
+            x = width * 0.75 - PLAYER_SIZE / 2;
             y = height * 0.35;
             break;
           case 7: // Midfield Right
-            x = width * 0.4;
+            x = width * 0.4 - PLAYER_SIZE / 2;
             y = height * 0.5;
             break;
           case 8: // Midfield Left
-            x = width * 0.6;
+            x = width * 0.6 - PLAYER_SIZE / 2;
             y = height * 0.5;
             break;
           case 9: // Right Half Forward
-            x = width * 0.25;
+            x = width * 0.25 - PLAYER_SIZE / 2;
             y = height * 0.65;
             break;
           case 10: // Centre Half Forward
-            x = width * 0.5;
+            x = width * 0.5 - PLAYER_SIZE / 2;
             y = height * 0.65;
             break;
           case 11: // Left Half Forward
-            x = width * 0.75;
+            x = width * 0.75 - PLAYER_SIZE / 2;
             y = height * 0.65;
             break;
           case 12: // Right Corner Forward
-            x = width * 0.25;
+            x = width * 0.25 - PLAYER_SIZE / 2;
             y = height * 0.85;
             break;
           case 13: // Full Forward
-            x = width * 0.5;
+            x = width * 0.5 - PLAYER_SIZE / 2;
             y = height * 0.85;
             break;
           case 14: // Left Corner Forward
-            x = width * 0.75;
+            x = width * 0.75 - PLAYER_SIZE / 2;
             y = height * 0.85;
             break;
           default:
-            x = width * 0.5;
-            y = height * 0.7 + (index - 15) * 30;
+            x = width * 0.5 - PLAYER_SIZE / 2;
+            y = height * 0.7 + (index - 15) * 40;
         }
       } else {
         // For more than 15 players, distribute evenly
@@ -197,11 +216,17 @@ export default function FormationScreen() {
         const col = index % cols;
         const row = Math.floor(index / cols);
         
-        x = (width / (cols + 1)) * (col + 1) - 30;
-        y = (height / (rows + 1)) * (row + 1) - 30;
+        x = (width / (cols + 1)) * (col + 1) - PLAYER_SIZE / 2;
+        y = (height / (rows + 1)) * (row + 1) - PLAYER_SIZE / 2;
       }
       
-      return { ...player, x: Math.max(30, Math.min(width - 90, x)), y: Math.max(30, Math.min(height - 90, y)) };
+      // Ensure positions are within bounds
+      const finalX = Math.max(0, Math.min(width - PLAYER_SIZE, x));
+      const finalY = Math.max(0, Math.min(height - PLAYER_SIZE, y));
+      
+      console.log(`Player ${index} (${player.name}) positioned at (${finalX}, ${finalY})`);
+      
+      return { ...player, x: finalX, y: finalY };
     });
     
     setPlayers(arrangedPlayers);
@@ -280,7 +305,7 @@ export default function FormationScreen() {
         <View style={styles.penaltySpot2} />
         
         {/* Players */}
-        {players.map((player) => (
+        {fieldDimensions.width > 0 && fieldDimensions.height > 0 && players.map((player) => (
           <DraggablePlayer
             key={player.id}
             player={player}
@@ -500,10 +525,10 @@ const styles = StyleSheet.create({
   },
   player: {
     position: 'absolute',
-    width: 60,
-    height: 60,
+    width: PLAYER_SIZE,
+    height: PLAYER_SIZE,
     backgroundColor: colors.accent,
-    borderRadius: 30,
+    borderRadius: PLAYER_SIZE / 2,
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 2,
