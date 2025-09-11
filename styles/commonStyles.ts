@@ -1,14 +1,17 @@
+
 import { StyleSheet, ViewStyle, TextStyle } from 'react-native';
 
 export const colors = {
-  primary: '#162456',    // Material Blue
-  secondary: '#193cb8',  // Darker Blue
-  accent: '#64B5F6',     // Light Blue
-  background: '#101824',  // Keeping dark background
-  backgroundAlt: '#162133',  // Keeping dark background
-  text: '#e3e3e3',       // Keeping light text
-  grey: '#90CAF9',       // Light Blue Grey
-  card: '#193cb8',       // Keeping dark card background
+  primary: '#1B5E20',      // Dark Green (football field)
+  secondary: '#2E7D32',    // Medium Green
+  accent: '#4CAF50',       // Bright Green
+  background: '#0D1B2A',   // Dark Navy
+  backgroundAlt: '#1B263B', // Lighter Navy
+  text: '#E8F5E8',         // Light Green-tinted white
+  grey: '#81C784',         // Light Green Grey
+  card: '#1B263B',         // Card background
+  white: '#FFFFFF',        // Pure white for field markings
+  fieldGreen: '#2E7D32',   // Football field green
 };
 
 export const buttonStyles = StyleSheet.create({
@@ -35,8 +38,6 @@ export const commonStyles = StyleSheet.create({
     backgroundColor: colors.background,
     width: '100%',
     height: '100%',
-    justifyContent: 'center',
-    alignItems: 'center',
   },
   content: {
     flex: 1,
@@ -84,6 +85,6 @@ export const commonStyles = StyleSheet.create({
   icon: {
     width: 60,
     height: 60,
-    tintColor: "white",
+    tintColor: colors.text,
   },
 });
