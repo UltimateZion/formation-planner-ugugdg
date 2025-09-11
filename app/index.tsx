@@ -18,8 +18,8 @@ export default function MainScreen() {
     <SafeAreaView style={commonStyles.container}>
       <View style={styles.content}>
         <View style={styles.header}>
-          <Icon name="american-football" size={80} color={colors.accent} />
-          <Text style={styles.title}>Formation Planner</Text>
+          <Icon name="football" size={80} color={colors.accent} />
+          <Text style={styles.title}>Team Formation Planned</Text>
           <Text style={styles.subtitle}>
             Create flexible football formations with any number of players
           </Text>
@@ -36,7 +36,11 @@ export default function MainScreen() {
           </View>
           <View style={styles.feature}>
             <Icon name="create" size={24} color={colors.accent} />
-            <Text style={styles.featureText}>Custom player names</Text>
+            <Text style={styles.featureText}>Player availability tracking</Text>
+          </View>
+          <View style={styles.feature}>
+            <Icon name="swap-horizontal" size={24} color={colors.accent} />
+            <Text style={styles.featureText}>Substitution management</Text>
           </View>
         </View>
 
@@ -44,6 +48,10 @@ export default function MainScreen() {
           <Text style={styles.startButtonText}>Start Planning</Text>
           <Icon name="arrow-forward" size={20} color={colors.background} />
         </TouchableOpacity>
+      </View>
+
+      <View style={styles.footer}>
+        <Text style={styles.designerNote}>Designed by Paul Halton</Text>
       </View>
     </SafeAreaView>
   );
@@ -110,5 +118,15 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '700',
     marginRight: 10,
+  },
+  footer: {
+    paddingHorizontal: 20,
+    paddingVertical: 15,
+    alignItems: 'center',
+  },
+  designerNote: {
+    fontSize: 12,
+    color: colors.grey,
+    fontStyle: 'italic',
   },
 });

@@ -7,7 +7,8 @@ import {
   StyleSheet, 
   TextInput, 
   ScrollView,
-  Alert 
+  Alert,
+  Switch
 } from 'react-native';
 import { commonStyles, colors } from '../styles/commonStyles';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -17,6 +18,7 @@ import Icon from '../components/Icon';
 interface Player {
   id: string;
   name: string;
+  isAvailable: boolean;
 }
 
 export default function TeamSetupScreen() {
@@ -38,6 +40,7 @@ export default function TeamSetupScreen() {
       const newPlayer: Player = {
         id: Date.now().toString(),
         name: newPlayerName.trim(),
+        isAvailable: true,
       };
       setPlayers([...players, newPlayer]);
       setNewPlayerName('');
@@ -50,6 +53,13 @@ export default function TeamSetupScreen() {
     console.log('Removed player with id:', id);
   };
 
+  const togglePlayerAvailability = (id: string) => {
+    setPlayers(players.map(player => 
+      player.id === id ? { ...player, isAvailable: !player.isAvailable } : player
+    ));
+    console.log('Toggled availability for player:', id);
+  };
+
   const generateDefaultPlayers = () => {
     const defaultPlayers: Player[] = [];
     const targetCount = parseInt(numberOfPlayers);
@@ -58,6 +68,7 @@ export default function TeamSetupScreen() {
       defaultPlayers.push({
         id: `default-${i}`,
         name: `Player ${i}`,
+        isAvailable: true,
       });
     }
     
@@ -68,6 +79,12 @@ export default function TeamSetupScreen() {
   const proceedToFormation = () => {
     if (players.length === 0) {
       Alert.alert('No Players', 'Please add at least one player to continue.');
+      return;
+    }
+    
+    const availablePlayers = players.filter(p => p.isAvailable);
+    if (availablePlayers.length === 0) {
+      Alert.alert('No Available Players', 'Please mark at least one player as available to continue.');
       return;
     }
     
@@ -82,6 +99,8 @@ export default function TeamSetupScreen() {
   };
 
   const remainingSlots = parseInt(numberOfPlayers) - players.length;
+  const availableCount = players.filter(p => p.isAvailable).length;
+  const unavailableCount = players.filter(p => !p.isAvailable).length;
 
   return (
     <SafeAreaView style={commonStyles.container}>
@@ -137,6 +156,19 @@ export default function TeamSetupScreen() {
             )}
           </View>
 
+          {players.length > 0 && (
+            <View style={styles.statusSummary}>
+              <View style={styles.statusItem}>
+                <View style={[styles.statusDot, { backgroundColor: colors.accent }]} />
+                <Text style={styles.statusText}>Available: {availableCount}</Text>
+              </View>
+              <View style={styles.statusItem}>
+                <View style={[styles.statusDot, { backgroundColor: colors.grey }]} />
+                <Text style={styles.statusText}>Unavailable: {unavailableCount}</Text>
+              </View>
+            </View>
+          )}
+
           {players.length < parseInt(numberOfPlayers) && (
             <View style={styles.addPlayerContainer}>
               <TextInput
@@ -155,17 +187,43 @@ export default function TeamSetupScreen() {
 
           <View style={styles.playersList}>
             {players.map((player, index) => (
-              <View key={player.id} style={styles.playerItem}>
+              <View key={player.id} style={[
+                styles.playerItem,
+                !player.isAvailable && styles.playerItemUnavailable
+              ]}>
                 <View style={styles.playerInfo}>
-                  <Text style={styles.playerNumber}>{index + 1}</Text>
-                  <Text style={styles.playerName}>{player.name}</Text>
+                  <Text style={[
+                    styles.playerNumber,
+                    !player.isAvailable && styles.playerNumberUnavailable
+                  ]}>
+                    {index + 1}
+                  </Text>
+                  <Text style={[
+                    styles.playerName,
+                    !player.isAvailable && styles.playerNameUnavailable
+                  ]}>
+                    {player.name}
+                  </Text>
                 </View>
-                <TouchableOpacity 
-                  style={styles.removeButton}
-                  onPress={() => removePlayer(player.id)}
-                >
-                  <Icon name="close" size={16} color={colors.text} />
-                </TouchableOpacity>
+                <View style={styles.playerControls}>
+                  <View style={styles.availabilityContainer}>
+                    <Text style={styles.availabilityLabel}>
+                      {player.isAvailable ? 'Available' : 'Unavailable'}
+                    </Text>
+                    <Switch
+                      value={player.isAvailable}
+                      onValueChange={() => togglePlayerAvailability(player.id)}
+                      trackColor={{ false: colors.grey, true: colors.accent }}
+                      thumbColor={colors.background}
+                    />
+                  </View>
+                  <TouchableOpacity 
+                    style={styles.removeButton}
+                    onPress={() => removePlayer(player.id)}
+                  >
+                    <Icon name="close" size={16} color={colors.text} />
+                  </TouchableOpacity>
+                </View>
               </View>
             ))}
           </View>
@@ -182,21 +240,21 @@ export default function TeamSetupScreen() {
         <TouchableOpacity 
           style={[
             styles.proceedButton, 
-            players.length === 0 && styles.proceedButtonDisabled
+            (players.length === 0 || availableCount === 0) && styles.proceedButtonDisabled
           ]} 
           onPress={proceedToFormation}
-          disabled={players.length === 0}
+          disabled={players.length === 0 || availableCount === 0}
         >
           <Text style={[
             styles.proceedButtonText,
-            players.length === 0 && styles.proceedButtonTextDisabled
+            (players.length === 0 || availableCount === 0) && styles.proceedButtonTextDisabled
           ]}>
             Create Formation
           </Text>
           <Icon 
             name="arrow-forward" 
             size={20} 
-            color={players.length === 0 ? colors.grey : colors.background} 
+            color={(players.length === 0 || availableCount === 0) ? colors.grey : colors.background} 
           />
         </TouchableOpacity>
       </View>
@@ -277,6 +335,30 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
   },
+  statusSummary: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 20,
+    marginBottom: 15,
+    paddingVertical: 10,
+    backgroundColor: colors.backgroundAlt,
+    borderRadius: 8,
+  },
+  statusItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  statusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  statusText: {
+    color: colors.text,
+    fontSize: 14,
+    fontWeight: '500',
+  },
   addPlayerContainer: {
     flexDirection: 'row',
     marginBottom: 20,
@@ -309,6 +391,10 @@ const styles = StyleSheet.create({
     padding: 12,
     borderRadius: 8,
   },
+  playerItemUnavailable: {
+    backgroundColor: colors.card,
+    opacity: 0.7,
+  },
   playerInfo: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -326,11 +412,32 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     marginRight: 12,
   },
+  playerNumberUnavailable: {
+    backgroundColor: colors.grey,
+  },
   playerName: {
     color: colors.text,
     fontSize: 16,
     fontWeight: '500',
     flex: 1,
+  },
+  playerNameUnavailable: {
+    color: colors.grey,
+  },
+  playerControls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  availabilityContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  availabilityLabel: {
+    color: colors.text,
+    fontSize: 12,
+    fontWeight: '500',
   },
   removeButton: {
     padding: 4,

@@ -7,25 +7,31 @@ import {
   Dimensions, 
   TouchableOpacity,
   PanResponder,
-  Animated
+  Animated,
+  ScrollView
 } from 'react-native';
 import { commonStyles, colors } from '../styles/commonStyles';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import Icon from '../components/Icon';
+import SimpleBottomSheet from '../components/BottomSheet';
 
 interface Player {
   id: string;
   name: string;
   x: number;
   y: number;
+  isAvailable: boolean;
+  isOnField: boolean;
 }
 
 interface DraggablePlayerProps {
   player: Player;
   onPositionChange: (id: string, x: number, y: number) => void;
+  onPlayerSwap?: (playerId: string) => void;
   fieldWidth: number;
   fieldHeight: number;
+  isSubstitute?: boolean;
 }
 
 const PLAYER_SIZE = 60;
@@ -33,8 +39,10 @@ const PLAYER_SIZE = 60;
 const DraggablePlayer: React.FC<DraggablePlayerProps> = ({ 
   player, 
   onPositionChange, 
+  onPlayerSwap,
   fieldWidth, 
-  fieldHeight 
+  fieldHeight,
+  isSubstitute = false
 }) => {
   const [isDragging, setIsDragging] = useState(false);
   const [currentPosition, setCurrentPosition] = useState({ x: player.x, y: player.y });
@@ -48,6 +56,8 @@ const DraggablePlayer: React.FC<DraggablePlayerProps> = ({
         setIsDragging(true);
       },
       onPanResponderMove: (_, gestureState) => {
+        if (isSubstitute) return; // Don't allow dragging substitutes
+        
         // Calculate new position with boundary constraints
         const newX = Math.max(0, Math.min(fieldWidth - PLAYER_SIZE, player.x + gestureState.dx));
         const newY = Math.max(0, Math.min(fieldHeight - PLAYER_SIZE, player.y + gestureState.dy));
@@ -58,6 +68,8 @@ const DraggablePlayer: React.FC<DraggablePlayerProps> = ({
       onPanResponderRelease: (_, gestureState) => {
         console.log(`Released player ${player.name}`);
         setIsDragging(false);
+        
+        if (isSubstitute) return;
         
         // Final position calculation with boundary constraints
         const finalX = Math.max(0, Math.min(fieldWidth - PLAYER_SIZE, player.x + gestureState.dx));
@@ -81,24 +93,40 @@ const DraggablePlayer: React.FC<DraggablePlayerProps> = ({
     setCurrentPosition({ x: player.x, y: player.y });
   }, [player.x, player.y]);
 
+  const handlePlayerPress = () => {
+    if (isSubstitute && onPlayerSwap) {
+      onPlayerSwap(player.id);
+    }
+  };
+
   return (
-    <View
+    <TouchableOpacity
       style={[
-        styles.player,
-        {
+        isSubstitute ? styles.substitutePlayer : styles.player,
+        isSubstitute ? {} : {
           left: currentPosition.x,
           top: currentPosition.y,
           zIndex: isDragging ? 1000 : 1,
           elevation: isDragging ? 10 : 2,
         },
         isDragging && styles.playerDragging,
+        !player.isAvailable && styles.playerUnavailable,
       ]}
-      {...panResponder.panHandlers}
+      onPress={handlePlayerPress}
+      {...(!isSubstitute ? panResponder.panHandlers : {})}
     >
-      <Text style={styles.playerText} numberOfLines={1}>
+      <Text style={[
+        isSubstitute ? styles.substitutePlayerText : styles.playerText,
+        !player.isAvailable && styles.playerTextUnavailable
+      ]} numberOfLines={1}>
         {player.name}
       </Text>
-    </View>
+      {isSubstitute && (
+        <View style={styles.substituteIcon}>
+          <Icon name="arrow-up" size={12} color={colors.background} />
+        </View>
+      )}
+    </TouchableOpacity>
   );
 };
 
@@ -106,14 +134,19 @@ export default function FormationScreen() {
   const router = useRouter();
   const { players: playersParam } = useLocalSearchParams();
   
-  const initialPlayers: Player[] = JSON.parse(playersParam as string || '[]').map((p: any, index: number) => ({
+  const allPlayers: Player[] = JSON.parse(playersParam as string || '[]').map((p: any, index: number) => ({
     ...p,
     x: Math.random() * 200 + 50,
     y: Math.random() * 300 + 100,
+    isOnField: p.isAvailable, // Initially, available players are on field
   }));
 
-  const [players, setPlayers] = useState<Player[]>(initialPlayers);
+  const [players, setPlayers] = useState<Player[]>(allPlayers);
   const [fieldDimensions, setFieldDimensions] = useState({ width: 0, height: 0 });
+  const [showSubstitutes, setShowSubstitutes] = useState(false);
+
+  const fieldPlayers = players.filter(p => p.isOnField && p.isAvailable);
+  const substitutePlayers = players.filter(p => !p.isOnField && p.isAvailable);
 
   const handlePositionChange = (id: string, x: number, y: number) => {
     console.log(`Updating player ${id} position to (${x}, ${y})`);
@@ -122,11 +155,55 @@ export default function FormationScreen() {
     ));
   };
 
+  const handlePlayerSwap = (substituteId: string) => {
+    console.log('Swapping substitute player:', substituteId);
+    
+    // Find the substitute player
+    const substitute = players.find(p => p.id === substituteId);
+    if (!substitute) return;
+
+    // Find a random field player to swap with
+    const fieldPlayersList = players.filter(p => p.isOnField && p.isAvailable);
+    if (fieldPlayersList.length === 0) {
+      // If no field players, just move substitute to field
+      setPlayers(prev => prev.map(player => 
+        player.id === substituteId 
+          ? { 
+              ...player, 
+              isOnField: true,
+              x: Math.random() * (fieldDimensions.width - PLAYER_SIZE) + 10,
+              y: Math.random() * (fieldDimensions.height - PLAYER_SIZE) + 10,
+            }
+          : player
+      ));
+      return;
+    }
+
+    // Swap with the first field player (or implement selection logic)
+    const fieldPlayer = fieldPlayersList[0];
+    
+    setPlayers(prev => prev.map(player => {
+      if (player.id === substituteId) {
+        return { 
+          ...player, 
+          isOnField: true,
+          x: fieldPlayer.x,
+          y: fieldPlayer.y,
+        };
+      } else if (player.id === fieldPlayer.id) {
+        return { ...player, isOnField: false, x: 0, y: 0 };
+      }
+      return player;
+    }));
+
+    console.log(`Swapped ${substitute.name} with ${fieldPlayer.name}`);
+  };
+
   const resetPositions = () => {
-    const resetPlayers = players.map((player, index) => ({
+    const resetPlayers = players.map((player) => ({
       ...player,
-      x: Math.random() * (fieldDimensions.width - PLAYER_SIZE) + 10,
-      y: Math.random() * (fieldDimensions.height - PLAYER_SIZE) + 10,
+      x: player.isOnField ? Math.random() * (fieldDimensions.width - PLAYER_SIZE) + 10 : 0,
+      y: player.isOnField ? Math.random() * (fieldDimensions.height - PLAYER_SIZE) + 10 : 0,
     }));
     setPlayers(resetPlayers);
     console.log('Reset all player positions');
@@ -134,12 +211,16 @@ export default function FormationScreen() {
 
   const arrangeInGAAFormation = () => {
     const { width, height } = fieldDimensions;
-    const playersCount = players.length;
+    const fieldPlayersList = players.filter(p => p.isOnField && p.isAvailable);
+    const playersCount = fieldPlayersList.length;
     
     console.log(`Arranging ${playersCount} players in GAA formation on field ${width}x${height}`);
     
     // GAA formation arrangement - rotated to vertical orientation (goals top/bottom)
-    const arrangedPlayers = players.map((player, index) => {
+    const arrangedPlayers = players.map((player) => {
+      if (!player.isOnField || !player.isAvailable) return player;
+      
+      const index = fieldPlayersList.findIndex(p => p.id === player.id);
       let x, y;
       
       if (playersCount <= 15) {
@@ -242,9 +323,17 @@ export default function FormationScreen() {
         >
           <Icon name="arrow-back" size={24} color={colors.text} />
         </TouchableOpacity>
-        <Text style={styles.title}>GAA Formation</Text>
-        <TouchableOpacity style={styles.menuButton}>
-          <Icon name="menu" size={24} color={colors.text} />
+        <Text style={styles.title}>Team Formation Planned</Text>
+        <TouchableOpacity 
+          style={styles.menuButton}
+          onPress={() => setShowSubstitutes(true)}
+        >
+          <Icon name="people" size={24} color={colors.text} />
+          {substitutePlayers.length > 0 && (
+            <View style={styles.substituteBadge}>
+              <Text style={styles.substituteBadgeText}>{substitutePlayers.length}</Text>
+            </View>
+          )}
         </TouchableOpacity>
       </View>
 
@@ -256,6 +345,13 @@ export default function FormationScreen() {
         <TouchableOpacity style={styles.controlButton} onPress={resetPositions}>
           <Icon name="refresh" size={16} color={colors.background} />
           <Text style={styles.controlButtonText}>Reset</Text>
+        </TouchableOpacity>
+        <TouchableOpacity 
+          style={styles.controlButton} 
+          onPress={() => setShowSubstitutes(true)}
+        >
+          <Icon name="swap-horizontal" size={16} color={colors.background} />
+          <Text style={styles.controlButtonText}>Subs ({substitutePlayers.length})</Text>
         </TouchableOpacity>
       </View>
 
@@ -304,8 +400,8 @@ export default function FormationScreen() {
         <View style={styles.penaltySpot1} />
         <View style={styles.penaltySpot2} />
         
-        {/* Players */}
-        {fieldDimensions.width > 0 && fieldDimensions.height > 0 && players.map((player) => (
+        {/* Field Players */}
+        {fieldDimensions.width > 0 && fieldDimensions.height > 0 && fieldPlayers.map((player) => (
           <DraggablePlayer
             key={player.id}
             player={player}
@@ -323,7 +419,49 @@ export default function FormationScreen() {
         <Text style={styles.gaaInfo}>
           GAA pitch: 130-145m × 80-90m with H-shaped goals at top and bottom
         </Text>
+        <Text style={styles.designerNote}>Designed by Paul Halton</Text>
       </View>
+
+      {/* Substitutes Bottom Sheet */}
+      <SimpleBottomSheet 
+        isVisible={showSubstitutes} 
+        onClose={() => setShowSubstitutes(false)}
+      >
+        <View style={styles.bottomSheetContent}>
+          <View style={styles.bottomSheetHeader}>
+            <Text style={styles.bottomSheetTitle}>Substitutes</Text>
+            <TouchableOpacity onPress={() => setShowSubstitutes(false)}>
+              <Icon name="close" size={24} color={colors.text} />
+            </TouchableOpacity>
+          </View>
+          
+          {substitutePlayers.length === 0 ? (
+            <View style={styles.noSubstitutes}>
+              <Icon name="checkmark-circle" size={48} color={colors.accent} />
+              <Text style={styles.noSubstitutesText}>All available players are on the field!</Text>
+            </View>
+          ) : (
+            <ScrollView style={styles.substitutesList} showsVerticalScrollIndicator={false}>
+              <Text style={styles.substitutesInstruction}>
+                Tap a substitute to swap them with a field player
+              </Text>
+              <View style={styles.substitutesGrid}>
+                {substitutePlayers.map((player) => (
+                  <DraggablePlayer
+                    key={player.id}
+                    player={player}
+                    onPositionChange={() => {}}
+                    onPlayerSwap={handlePlayerSwap}
+                    fieldWidth={0}
+                    fieldHeight={0}
+                    isSubstitute={true}
+                  />
+                ))}
+              </View>
+            </ScrollView>
+          )}
+        </View>
+      </SimpleBottomSheet>
     </SafeAreaView>
   );
 }
@@ -343,6 +481,23 @@ const styles = StyleSheet.create({
   },
   menuButton: {
     padding: 8,
+    position: 'relative',
+  },
+  substituteBadge: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    backgroundColor: colors.accent,
+    borderRadius: 10,
+    minWidth: 20,
+    height: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  substituteBadgeText: {
+    color: colors.background,
+    fontSize: 12,
+    fontWeight: '700',
   },
   title: {
     fontSize: 20,
@@ -542,6 +697,10 @@ const styles = StyleSheet.create({
     boxShadow: '0px 6px 16px rgba(0, 0, 0, 0.4)',
     elevation: 8,
   },
+  playerUnavailable: {
+    backgroundColor: colors.grey,
+    opacity: 0.6,
+  },
   playerText: {
     color: colors.background,
     fontSize: 10,
@@ -549,11 +708,45 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     paddingHorizontal: 4,
   },
+  playerTextUnavailable: {
+    color: colors.text,
+  },
+  substitutePlayer: {
+    width: PLAYER_SIZE,
+    height: PLAYER_SIZE,
+    backgroundColor: colors.secondary,
+    borderRadius: PLAYER_SIZE / 2,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: colors.accent,
+    margin: 5,
+    position: 'relative',
+  },
+  substitutePlayerText: {
+    color: colors.background,
+    fontSize: 10,
+    fontWeight: '700',
+    textAlign: 'center',
+    paddingHorizontal: 4,
+  },
+  substituteIcon: {
+    position: 'absolute',
+    top: -5,
+    right: -5,
+    backgroundColor: colors.accent,
+    borderRadius: 10,
+    width: 20,
+    height: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   footer: {
     paddingHorizontal: 20,
     paddingVertical: 15,
     borderTopWidth: 1,
     borderTopColor: colors.backgroundAlt,
+    alignItems: 'center',
   },
   instruction: {
     color: colors.grey,
@@ -567,5 +760,52 @@ const styles = StyleSheet.create({
     fontSize: 12,
     textAlign: 'center',
     fontStyle: 'italic',
+    marginBottom: 8,
+  },
+  designerNote: {
+    fontSize: 12,
+    color: colors.grey,
+    fontStyle: 'italic',
+  },
+  bottomSheetContent: {
+    padding: 20,
+    maxHeight: 400,
+  },
+  bottomSheetHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  bottomSheetTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  noSubstitutes: {
+    alignItems: 'center',
+    paddingVertical: 40,
+  },
+  noSubstitutesText: {
+    fontSize: 16,
+    color: colors.text,
+    textAlign: 'center',
+    marginTop: 10,
+  },
+  substitutesList: {
+    maxHeight: 300,
+  },
+  substitutesInstruction: {
+    fontSize: 14,
+    color: colors.grey,
+    textAlign: 'center',
+    marginBottom: 15,
+    fontStyle: 'italic',
+  },
+  substitutesGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    gap: 10,
   },
 });
