@@ -1,5 +1,5 @@
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { 
   View, 
   Text, 
@@ -8,12 +8,14 @@ import {
   TouchableOpacity,
   PanResponder,
   Animated,
-  ScrollView
+  ScrollView,
+  Alert
 } from 'react-native';
 import { commonStyles, colors } from '../styles/commonStyles';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import Icon from '../components/Icon';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 interface Player {
   id: string;
@@ -32,11 +34,13 @@ interface DraggablePlayerProps {
   fieldHeight: number;
   isSubstitute?: boolean;
   onDragToSubBench?: (playerId: string) => void;
+  onDragToField?: (playerId: string, x: number, y: number) => void;
   subBenchHeight?: number;
 }
 
 const PLAYER_SIZE = 60;
 const SUB_BENCH_HEIGHT = 120;
+const FORMATION_STORAGE_KEY = 'team_formation_positions';
 
 const DraggablePlayer: React.FC<DraggablePlayerProps> = ({ 
   player, 
@@ -46,6 +50,7 @@ const DraggablePlayer: React.FC<DraggablePlayerProps> = ({
   fieldHeight,
   isSubstitute = false,
   onDragToSubBench,
+  onDragToField,
   subBenchHeight = 0
 }) => {
   const [isDragging, setIsDragging] = useState(false);
@@ -62,7 +67,7 @@ const DraggablePlayer: React.FC<DraggablePlayerProps> = ({
       onMoveShouldSetPanResponder: () => true,
       
       onPanResponderGrant: () => {
-        console.log(`Started dragging player ${player.name}`);
+        console.log(`Started dragging player ${player.name} (substitute: ${isSubstitute})`);
         setIsDragging(true);
         pan.setOffset({
           x: pan.x._value,
@@ -72,8 +77,6 @@ const DraggablePlayer: React.FC<DraggablePlayerProps> = ({
       },
       
       onPanResponderMove: (_, gestureState) => {
-        if (isSubstitute) return; // Don't allow dragging substitutes directly
-        
         console.log(`Moving player ${player.name}: dx=${gestureState.dx}, dy=${gestureState.dy}`);
         pan.setValue({
           x: gestureState.dx,
@@ -84,40 +87,53 @@ const DraggablePlayer: React.FC<DraggablePlayerProps> = ({
       onPanResponderRelease: (_, gestureState) => {
         console.log(`Released player ${player.name}`);
         setIsDragging(false);
-        
-        if (isSubstitute) return;
-        
         pan.flattenOffset();
         
         // Get current position
         const currentX = pan.x._value;
         const currentY = pan.y._value;
         
-        // Check if dropped in sub bench area (bottom of screen)
-        const totalScreenHeight = fieldHeight + subBenchHeight;
-        const isInSubBench = currentY > fieldHeight - 20; // 20px buffer
-        
-        if (isInSubBench && onDragToSubBench) {
-          console.log(`Player ${player.name} dropped in sub bench`);
-          onDragToSubBench(player.id);
-          return;
+        if (isSubstitute) {
+          // Substitute being dragged to field
+          const isInField = currentY < fieldHeight && currentX >= 0 && currentX <= fieldWidth;
+          
+          if (isInField && onDragToField) {
+            const constrainedX = Math.max(0, Math.min(fieldWidth - PLAYER_SIZE, currentX));
+            const constrainedY = Math.max(0, Math.min(fieldHeight - PLAYER_SIZE, currentY));
+            console.log(`Substitute ${player.name} dropped on field at (${constrainedX}, ${constrainedY})`);
+            onDragToField(player.id, constrainedX, constrainedY);
+            return;
+          } else {
+            // Snap back to original position
+            pan.setValue({ x: player.x, y: player.y });
+            console.log(`Substitute ${player.name} snapped back to bench`);
+          }
+        } else {
+          // Field player being dragged
+          const isInSubBench = currentY > fieldHeight - 20; // 20px buffer for sub bench
+          
+          if (isInSubBench && onDragToSubBench) {
+            console.log(`Field player ${player.name} dropped in sub bench`);
+            onDragToSubBench(player.id);
+            return;
+          } else {
+            // Keep on field with constraints
+            const constrainedX = Math.max(0, Math.min(fieldWidth - PLAYER_SIZE, currentX));
+            const constrainedY = Math.max(0, Math.min(fieldHeight - PLAYER_SIZE, currentY));
+            
+            pan.setValue({ x: constrainedX, y: constrainedY });
+            onPositionChange(player.id, constrainedX, constrainedY);
+            console.log(`Field player ${player.name} moved to (${constrainedX}, ${constrainedY})`);
+          }
         }
-        
-        // Apply boundary constraints for field
-        const constrainedX = Math.max(0, Math.min(fieldWidth - PLAYER_SIZE, currentX));
-        const constrainedY = Math.max(0, Math.min(fieldHeight - PLAYER_SIZE, currentY));
-        
-        // Update position with constraints
-        pan.setValue({ x: constrainedX, y: constrainedY });
-        onPositionChange(player.id, constrainedX, constrainedY);
-        
-        console.log(`Player ${player.name} final position: (${constrainedX}, ${constrainedY})`);
       },
       
       onPanResponderTerminate: () => {
         console.log(`Terminated dragging player ${player.name}`);
         setIsDragging(false);
         pan.flattenOffset();
+        // Snap back to original position
+        pan.setValue({ x: player.x, y: player.y });
       },
     })
   ).current;
@@ -131,23 +147,35 @@ const DraggablePlayer: React.FC<DraggablePlayerProps> = ({
 
   if (isSubstitute) {
     return (
-      <TouchableOpacity
+      <Animated.View
         style={[
           styles.substitutePlayer,
+          {
+            transform: pan.getTranslateTransform(),
+            zIndex: isDragging ? 1000 : 1,
+            elevation: isDragging ? 10 : 2,
+          },
           !player.isAvailable && styles.playerUnavailable,
+          isDragging && styles.playerDragging,
         ]}
-        onPress={handlePlayerPress}
+        {...panResponder.panHandlers}
       >
-        <Text style={[
-          styles.substitutePlayerText,
-          !player.isAvailable && styles.playerTextUnavailable
-        ]} numberOfLines={1}>
-          {player.name}
-        </Text>
-        <View style={styles.substituteIcon}>
-          <Icon name="arrow-up" size={12} color={colors.background} />
-        </View>
-      </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.substitutePlayerContent}
+          onPress={handlePlayerPress}
+          activeOpacity={0.7}
+        >
+          <Text style={[
+            styles.substitutePlayerText,
+            !player.isAvailable && styles.playerTextUnavailable
+          ]} numberOfLines={1}>
+            {player.name}
+          </Text>
+          <View style={styles.substituteIcon}>
+            <Icon name="arrow-up" size={12} color={colors.background} />
+          </View>
+        </TouchableOpacity>
+      </Animated.View>
     );
   }
 
@@ -183,11 +211,66 @@ export default function FormationScreen() {
     ...p,
     x: Math.random() * 200 + 50,
     y: Math.random() * 200 + 50,
-    isOnField: p.isAvailable, // Initially, available players are on field
+    isOnField: p.isAvailable, // Only available players start on field
   }));
 
   const [players, setPlayers] = useState<Player[]>(allPlayers);
   const [fieldDimensions, setFieldDimensions] = useState({ width: 0, height: 0 });
+
+  // Load saved formation positions
+  useEffect(() => {
+    loadFormationPositions();
+  }, []);
+
+  // Save formation positions whenever players change
+  useEffect(() => {
+    if (fieldDimensions.width > 0) {
+      saveFormationPositions();
+    }
+  }, [players, fieldDimensions]);
+
+  const loadFormationPositions = async () => {
+    try {
+      const savedPositions = await AsyncStorage.getItem(FORMATION_STORAGE_KEY);
+      if (savedPositions) {
+        const positions = JSON.parse(savedPositions);
+        console.log('Loaded saved formation positions');
+        
+        // Apply saved positions to matching players
+        setPlayers(prevPlayers => 
+          prevPlayers.map(player => {
+            const savedPlayer = positions.find((p: any) => p.id === player.id);
+            if (savedPlayer) {
+              return {
+                ...player,
+                x: savedPlayer.x,
+                y: savedPlayer.y,
+                isOnField: savedPlayer.isOnField,
+              };
+            }
+            return player;
+          })
+        );
+      }
+    } catch (error) {
+      console.error('Error loading formation positions:', error);
+    }
+  };
+
+  const saveFormationPositions = async () => {
+    try {
+      const positionsToSave = players.map(player => ({
+        id: player.id,
+        x: player.x,
+        y: player.y,
+        isOnField: player.isOnField,
+      }));
+      await AsyncStorage.setItem(FORMATION_STORAGE_KEY, JSON.stringify(positionsToSave));
+      console.log('Formation positions saved');
+    } catch (error) {
+      console.error('Error saving formation positions:', error);
+    }
+  };
 
   const fieldPlayers = players.filter(p => p.isOnField && p.isAvailable);
   const substitutePlayers = players.filter(p => !p.isOnField && p.isAvailable);
@@ -208,64 +291,98 @@ export default function FormationScreen() {
     ));
   };
 
+  const handleDragToField = (playerId: string, x: number, y: number) => {
+    console.log('Moving substitute to field:', playerId, x, y);
+    setPlayers(prev => prev.map(player => 
+      player.id === playerId 
+        ? { ...player, isOnField: true, x, y }
+        : player
+    ));
+  };
+
   const handlePlayerSwap = (substituteId: string) => {
     console.log('Swapping substitute player:', substituteId);
     
-    // Find the substitute player
     const substitute = players.find(p => p.id === substituteId);
     if (!substitute) return;
 
-    // Find a random field player to swap with
     const fieldPlayersList = players.filter(p => p.isOnField && p.isAvailable);
+    
     if (fieldPlayersList.length === 0) {
-      // If no field players, just move substitute to field
+      // No field players, just move substitute to field
+      const randomX = Math.random() * (fieldDimensions.width - PLAYER_SIZE) + 10;
+      const randomY = Math.random() * (fieldDimensions.height - PLAYER_SIZE) + 10;
+      
       setPlayers(prev => prev.map(player => 
         player.id === substituteId 
-          ? { 
-              ...player, 
-              isOnField: true,
-              x: Math.random() * (fieldDimensions.width - PLAYER_SIZE) + 10,
-              y: Math.random() * (fieldDimensions.height - PLAYER_SIZE) + 10,
-            }
+          ? { ...player, isOnField: true, x: randomX, y: randomY }
           : player
       ));
       return;
     }
 
-    // Swap with the first field player (or implement selection logic)
-    const fieldPlayer = fieldPlayersList[0];
+    // Show selection dialog for which player to swap with
+    const playerNames = fieldPlayersList.map(p => p.name);
     
-    setPlayers(prev => prev.map(player => {
-      if (player.id === substituteId) {
-        return { 
-          ...player, 
-          isOnField: true,
-          x: fieldPlayer.x,
-          y: fieldPlayer.y,
-        };
-      } else if (player.id === fieldPlayer.id) {
-        return { ...player, isOnField: false, x: 0, y: 0 };
-      }
-      return player;
-    }));
-
-    console.log(`Swapped ${substitute.name} with ${fieldPlayer.name}`);
+    Alert.alert(
+      'Select Player to Swap',
+      `Choose which field player to swap with ${substitute.name}:`,
+      [
+        ...fieldPlayersList.map((fieldPlayer, index) => ({
+          text: fieldPlayer.name,
+          onPress: () => {
+            setPlayers(prev => prev.map(player => {
+              if (player.id === substituteId) {
+                return { 
+                  ...player, 
+                  isOnField: true,
+                  x: fieldPlayer.x,
+                  y: fieldPlayer.y,
+                };
+              } else if (player.id === fieldPlayer.id) {
+                return { ...player, isOnField: false, x: 0, y: 0 };
+              }
+              return player;
+            }));
+            console.log(`Swapped ${substitute.name} with ${fieldPlayer.name}`);
+          }
+        })),
+        { text: 'Cancel', style: 'cancel' }
+      ]
+    );
   };
 
   const resetPositions = () => {
-    const resetPlayers = players.map((player) => ({
-      ...player,
-      x: player.isOnField ? Math.random() * (fieldDimensions.width - PLAYER_SIZE) + 10 : 0,
-      y: player.isOnField ? Math.random() * (fieldDimensions.height - PLAYER_SIZE) + 10 : 0,
-    }));
-    setPlayers(resetPlayers);
-    console.log('Reset all player positions');
+    Alert.alert(
+      'Reset Positions',
+      'This will randomly redistribute all field players. Continue?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Reset',
+          onPress: () => {
+            const resetPlayers = players.map((player) => ({
+              ...player,
+              x: player.isOnField ? Math.random() * (fieldDimensions.width - PLAYER_SIZE) + 10 : 0,
+              y: player.isOnField ? Math.random() * (fieldDimensions.height - PLAYER_SIZE) + 10 : 0,
+            }));
+            setPlayers(resetPlayers);
+            console.log('Reset all player positions');
+          }
+        }
+      ]
+    );
   };
 
   const arrangeInGAAFormation = () => {
     const { width, height } = fieldDimensions;
     const fieldPlayersList = players.filter(p => p.isOnField && p.isAvailable);
     const playersCount = fieldPlayersList.length;
+    
+    if (playersCount === 0) {
+      Alert.alert('No Field Players', 'Add some players to the field first.');
+      return;
+    }
     
     console.log(`Arranging ${playersCount} players in GAA formation on field ${width}x${height}`);
     
@@ -469,7 +586,7 @@ export default function FormationScreen() {
           {substitutePlayers.length === 0 ? (
             <View style={styles.emptySubBench}>
               <Icon name="checkmark-circle" size={32} color={colors.accent} />
-              <Text style={styles.emptySubBenchText}>All players on field</Text>
+              <Text style={styles.emptySubBenchText}>All available players on field</Text>
             </View>
           ) : (
             substitutePlayers.map((player) => (
@@ -478,8 +595,9 @@ export default function FormationScreen() {
                 player={player}
                 onPositionChange={() => {}}
                 onPlayerSwap={handlePlayerSwap}
-                fieldWidth={0}
-                fieldHeight={0}
+                onDragToField={handleDragToField}
+                fieldWidth={fieldDimensions.width}
+                fieldHeight={fieldDimensions.height}
                 isSubstitute={true}
               />
             ))
@@ -487,7 +605,7 @@ export default function FormationScreen() {
         </ScrollView>
         
         <Text style={styles.subBenchInstruction}>
-          Tap substitutes to swap with field players • Drag field players here to substitute
+          Drag substitutes to field • Tap to swap with field players • Drag field players here to substitute
         </Text>
       </View>
 
@@ -735,14 +853,18 @@ const styles = StyleSheet.create({
   substitutePlayer: {
     width: PLAYER_SIZE,
     height: PLAYER_SIZE,
+    margin: 5,
+    position: 'relative',
+  },
+  substitutePlayerContent: {
+    width: '100%',
+    height: '100%',
     backgroundColor: colors.secondary,
     borderRadius: PLAYER_SIZE / 2,
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 2,
     borderColor: colors.accent,
-    margin: 5,
-    position: 'relative',
   },
   substitutePlayerText: {
     color: colors.background,

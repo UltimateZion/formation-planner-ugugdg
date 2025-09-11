@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Text, 
   View, 
@@ -14,6 +14,7 @@ import { commonStyles, colors } from '../styles/commonStyles';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import Icon from '../components/Icon';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 interface Player {
   id: string;
@@ -21,11 +22,80 @@ interface Player {
   isAvailable: boolean;
 }
 
+const STORAGE_KEY = 'team_formation_players';
+
 export default function TeamSetupScreen() {
   const router = useRouter();
   const [numberOfPlayers, setNumberOfPlayers] = useState('11');
   const [players, setPlayers] = useState<Player[]>([]);
   const [newPlayerName, setNewPlayerName] = useState('');
+  const [isLoading, setIsLoading] = useState(true);
+
+  // Load saved players on component mount
+  useEffect(() => {
+    loadSavedPlayers();
+  }, []);
+
+  // Save players whenever the players array changes
+  useEffect(() => {
+    if (!isLoading) {
+      savePlayers();
+    }
+  }, [players, isLoading]);
+
+  const loadSavedPlayers = async () => {
+    try {
+      const savedData = await AsyncStorage.getItem(STORAGE_KEY);
+      if (savedData) {
+        const parsedData = JSON.parse(savedData);
+        setPlayers(parsedData.players || []);
+        setNumberOfPlayers(parsedData.numberOfPlayers || '11');
+        console.log('Loaded saved players:', parsedData.players?.length || 0);
+      }
+    } catch (error) {
+      console.error('Error loading saved players:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const savePlayers = async () => {
+    try {
+      const dataToSave = {
+        players,
+        numberOfPlayers,
+        lastUpdated: new Date().toISOString(),
+      };
+      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(dataToSave));
+      console.log('Players saved successfully');
+    } catch (error) {
+      console.error('Error saving players:', error);
+    }
+  };
+
+  const clearAllData = async () => {
+    Alert.alert(
+      'Clear All Data',
+      'Are you sure you want to remove all players? This cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Clear All',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await AsyncStorage.removeItem(STORAGE_KEY);
+              setPlayers([]);
+              setNumberOfPlayers('11');
+              console.log('All player data cleared');
+            } catch (error) {
+              console.error('Error clearing data:', error);
+            }
+          },
+        },
+      ]
+    );
+  };
 
   const handleNumberChange = (text: string) => {
     const num = parseInt(text) || 0;
@@ -66,7 +136,7 @@ export default function TeamSetupScreen() {
     
     for (let i = 1; i <= targetCount; i++) {
       defaultPlayers.push({
-        id: `default-${i}`,
+        id: `default-${i}-${Date.now()}`,
         name: `Player ${i}`,
         isAvailable: true,
       });
@@ -102,6 +172,16 @@ export default function TeamSetupScreen() {
   const availableCount = players.filter(p => p.isAvailable).length;
   const unavailableCount = players.filter(p => !p.isAvailable).length;
 
+  if (isLoading) {
+    return (
+      <SafeAreaView style={commonStyles.container}>
+        <View style={[commonStyles.content, { justifyContent: 'center' }]}>
+          <Text style={commonStyles.text}>Loading your team...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={commonStyles.container}>
       <View style={styles.header}>
@@ -112,12 +192,17 @@ export default function TeamSetupScreen() {
           <Icon name="arrow-back" size={24} color={colors.text} />
         </TouchableOpacity>
         <Text style={styles.title}>Team Setup</Text>
-        <View style={styles.placeholder} />
+        <TouchableOpacity 
+          style={styles.clearButton} 
+          onPress={clearAllData}
+        >
+          <Icon name="trash" size={20} color={colors.text} />
+        </TouchableOpacity>
       </View>
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Number of Players</Text>
+          <Text style={styles.sectionTitle}>Squad Size</Text>
           <View style={styles.numberInputContainer}>
             <TouchableOpacity 
               style={styles.numberButton}
@@ -144,7 +229,7 @@ export default function TeamSetupScreen() {
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>
-              Players ({players.length}/{numberOfPlayers})
+              Squad ({players.length}/{numberOfPlayers})
             </Text>
             {players.length === 0 && (
               <TouchableOpacity 
@@ -207,7 +292,10 @@ export default function TeamSetupScreen() {
                 </View>
                 <View style={styles.playerControls}>
                   <View style={styles.availabilityContainer}>
-                    <Text style={styles.availabilityLabel}>
+                    <Text style={[
+                      styles.availabilityLabel,
+                      !player.isAvailable && styles.availabilityLabelUnavailable
+                    ]}>
                       {player.isAvailable ? 'Available' : 'Unavailable'}
                     </Text>
                     <Switch
@@ -230,8 +318,18 @@ export default function TeamSetupScreen() {
 
           {remainingSlots > 0 && (
             <Text style={styles.remainingText}>
-              {remainingSlots} more player{remainingSlots !== 1 ? 's' : ''} needed
+              {remainingSlots} more player{remainingSlots !== 1 ? 's' : ''} can be added
             </Text>
+          )}
+
+          {players.length > 0 && (
+            <View style={styles.infoBox}>
+              <Icon name="information-circle" size={20} color={colors.accent} />
+              <Text style={styles.infoText}>
+                Only available players will appear on the field initially. 
+                You can swap players during formation planning.
+              </Text>
+            </View>
           )}
         </View>
       </ScrollView>
@@ -275,13 +373,13 @@ const styles = StyleSheet.create({
   backButton: {
     padding: 8,
   },
+  clearButton: {
+    padding: 8,
+  },
   title: {
     fontSize: 20,
     fontWeight: '700',
     color: colors.text,
-  },
-  placeholder: {
-    width: 40,
   },
   content: {
     flex: 1,
@@ -439,6 +537,9 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '500',
   },
+  availabilityLabelUnavailable: {
+    color: colors.grey,
+  },
   removeButton: {
     padding: 4,
   },
@@ -448,6 +549,21 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 10,
     fontStyle: 'italic',
+  },
+  infoBox: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: colors.backgroundAlt,
+    padding: 12,
+    borderRadius: 8,
+    marginTop: 15,
+    gap: 10,
+  },
+  infoText: {
+    color: colors.text,
+    fontSize: 13,
+    lineHeight: 18,
+    flex: 1,
   },
   footer: {
     paddingHorizontal: 20,
@@ -462,7 +578,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingVertical: 16,
     borderRadius: 12,
-    boxShadow: '0px 4px 12px rgba(100, 181, 246, 0.3)',
+    boxShadow: '0px 4px 12px rgba(76, 175, 80, 0.3)',
     elevation: 4,
   },
   proceedButtonDisabled: {
