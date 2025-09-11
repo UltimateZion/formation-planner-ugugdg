@@ -14,7 +14,6 @@ import { commonStyles, colors } from '../styles/commonStyles';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import Icon from '../components/Icon';
-import SimpleBottomSheet from '../components/BottomSheet';
 
 interface Player {
   id: string;
@@ -32,9 +31,12 @@ interface DraggablePlayerProps {
   fieldWidth: number;
   fieldHeight: number;
   isSubstitute?: boolean;
+  onDragToSubBench?: (playerId: string) => void;
+  subBenchHeight?: number;
 }
 
 const PLAYER_SIZE = 60;
+const SUB_BENCH_HEIGHT = 120;
 
 const DraggablePlayer: React.FC<DraggablePlayerProps> = ({ 
   player, 
@@ -42,91 +44,134 @@ const DraggablePlayer: React.FC<DraggablePlayerProps> = ({
   onPlayerSwap,
   fieldWidth, 
   fieldHeight,
-  isSubstitute = false
+  isSubstitute = false,
+  onDragToSubBench,
+  subBenchHeight = 0
 }) => {
   const [isDragging, setIsDragging] = useState(false);
-  const [currentPosition, setCurrentPosition] = useState({ x: player.x, y: player.y });
+  const pan = useRef(new Animated.ValueXY({ x: player.x, y: player.y })).current;
+
+  // Update animated value when player position changes externally
+  React.useEffect(() => {
+    pan.setValue({ x: player.x, y: player.y });
+  }, [player.x, player.y, pan]);
 
   const panResponder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
       onMoveShouldSetPanResponder: () => true,
+      
       onPanResponderGrant: () => {
         console.log(`Started dragging player ${player.name}`);
         setIsDragging(true);
+        pan.setOffset({
+          x: pan.x._value,
+          y: pan.y._value,
+        });
+        pan.setValue({ x: 0, y: 0 });
       },
+      
       onPanResponderMove: (_, gestureState) => {
-        if (isSubstitute) return; // Don't allow dragging substitutes
+        if (isSubstitute) return; // Don't allow dragging substitutes directly
         
-        // Calculate new position with boundary constraints
-        const newX = Math.max(0, Math.min(fieldWidth - PLAYER_SIZE, player.x + gestureState.dx));
-        const newY = Math.max(0, Math.min(fieldHeight - PLAYER_SIZE, player.y + gestureState.dy));
-        
-        setCurrentPosition({ x: newX, y: newY });
-        console.log(`Moving player ${player.name} to (${newX.toFixed(1)}, ${newY.toFixed(1)})`);
+        console.log(`Moving player ${player.name}: dx=${gestureState.dx}, dy=${gestureState.dy}`);
+        pan.setValue({
+          x: gestureState.dx,
+          y: gestureState.dy,
+        });
       },
+      
       onPanResponderRelease: (_, gestureState) => {
         console.log(`Released player ${player.name}`);
         setIsDragging(false);
         
         if (isSubstitute) return;
         
-        // Final position calculation with boundary constraints
-        const finalX = Math.max(0, Math.min(fieldWidth - PLAYER_SIZE, player.x + gestureState.dx));
-        const finalY = Math.max(0, Math.min(fieldHeight - PLAYER_SIZE, player.y + gestureState.dy));
+        pan.flattenOffset();
         
-        setCurrentPosition({ x: finalX, y: finalY });
-        onPositionChange(player.id, finalX, finalY);
+        // Get current position
+        const currentX = pan.x._value;
+        const currentY = pan.y._value;
         
-        console.log(`Player ${player.name} final position: (${finalX}, ${finalY})`);
+        // Check if dropped in sub bench area (bottom of screen)
+        const totalScreenHeight = fieldHeight + subBenchHeight;
+        const isInSubBench = currentY > fieldHeight - 20; // 20px buffer
+        
+        if (isInSubBench && onDragToSubBench) {
+          console.log(`Player ${player.name} dropped in sub bench`);
+          onDragToSubBench(player.id);
+          return;
+        }
+        
+        // Apply boundary constraints for field
+        const constrainedX = Math.max(0, Math.min(fieldWidth - PLAYER_SIZE, currentX));
+        const constrainedY = Math.max(0, Math.min(fieldHeight - PLAYER_SIZE, currentY));
+        
+        // Update position with constraints
+        pan.setValue({ x: constrainedX, y: constrainedY });
+        onPositionChange(player.id, constrainedX, constrainedY);
+        
+        console.log(`Player ${player.name} final position: (${constrainedX}, ${constrainedY})`);
       },
+      
       onPanResponderTerminate: () => {
         console.log(`Terminated dragging player ${player.name}`);
         setIsDragging(false);
-        setCurrentPosition({ x: player.x, y: player.y });
+        pan.flattenOffset();
       },
     })
   ).current;
 
-  // Update current position when player prop changes (e.g., from formation changes)
-  React.useEffect(() => {
-    setCurrentPosition({ x: player.x, y: player.y });
-  }, [player.x, player.y]);
-
   const handlePlayerPress = () => {
     if (isSubstitute && onPlayerSwap) {
+      console.log(`Tapping substitute ${player.name}`);
       onPlayerSwap(player.id);
     }
   };
 
+  if (isSubstitute) {
+    return (
+      <TouchableOpacity
+        style={[
+          styles.substitutePlayer,
+          !player.isAvailable && styles.playerUnavailable,
+        ]}
+        onPress={handlePlayerPress}
+      >
+        <Text style={[
+          styles.substitutePlayerText,
+          !player.isAvailable && styles.playerTextUnavailable
+        ]} numberOfLines={1}>
+          {player.name}
+        </Text>
+        <View style={styles.substituteIcon}>
+          <Icon name="arrow-up" size={12} color={colors.background} />
+        </View>
+      </TouchableOpacity>
+    );
+  }
+
   return (
-    <TouchableOpacity
+    <Animated.View
       style={[
-        isSubstitute ? styles.substitutePlayer : styles.player,
-        isSubstitute ? {} : {
-          left: currentPosition.x,
-          top: currentPosition.y,
+        styles.player,
+        {
+          transform: pan.getTranslateTransform(),
           zIndex: isDragging ? 1000 : 1,
           elevation: isDragging ? 10 : 2,
         },
         isDragging && styles.playerDragging,
         !player.isAvailable && styles.playerUnavailable,
       ]}
-      onPress={handlePlayerPress}
-      {...(!isSubstitute ? panResponder.panHandlers : {})}
+      {...panResponder.panHandlers}
     >
       <Text style={[
-        isSubstitute ? styles.substitutePlayerText : styles.playerText,
+        styles.playerText,
         !player.isAvailable && styles.playerTextUnavailable
       ]} numberOfLines={1}>
         {player.name}
       </Text>
-      {isSubstitute && (
-        <View style={styles.substituteIcon}>
-          <Icon name="arrow-up" size={12} color={colors.background} />
-        </View>
-      )}
-    </TouchableOpacity>
+    </Animated.View>
   );
 };
 
@@ -137,13 +182,12 @@ export default function FormationScreen() {
   const allPlayers: Player[] = JSON.parse(playersParam as string || '[]').map((p: any, index: number) => ({
     ...p,
     x: Math.random() * 200 + 50,
-    y: Math.random() * 300 + 100,
+    y: Math.random() * 200 + 50,
     isOnField: p.isAvailable, // Initially, available players are on field
   }));
 
   const [players, setPlayers] = useState<Player[]>(allPlayers);
   const [fieldDimensions, setFieldDimensions] = useState({ width: 0, height: 0 });
-  const [showSubstitutes, setShowSubstitutes] = useState(false);
 
   const fieldPlayers = players.filter(p => p.isOnField && p.isAvailable);
   const substitutePlayers = players.filter(p => !p.isOnField && p.isAvailable);
@@ -152,6 +196,15 @@ export default function FormationScreen() {
     console.log(`Updating player ${id} position to (${x}, ${y})`);
     setPlayers(prev => prev.map(player => 
       player.id === id ? { ...player, x, y } : player
+    ));
+  };
+
+  const handleDragToSubBench = (playerId: string) => {
+    console.log('Moving player to sub bench:', playerId);
+    setPlayers(prev => prev.map(player => 
+      player.id === playerId 
+        ? { ...player, isOnField: false, x: 0, y: 0 }
+        : player
     ));
   };
 
@@ -323,18 +376,10 @@ export default function FormationScreen() {
         >
           <Icon name="arrow-back" size={24} color={colors.text} />
         </TouchableOpacity>
-        <Text style={styles.title}>Team Formation Planned</Text>
-        <TouchableOpacity 
-          style={styles.menuButton}
-          onPress={() => setShowSubstitutes(true)}
-        >
-          <Icon name="people" size={24} color={colors.text} />
-          {substitutePlayers.length > 0 && (
-            <View style={styles.substituteBadge}>
-              <Text style={styles.substituteBadgeText}>{substitutePlayers.length}</Text>
-            </View>
-          )}
-        </TouchableOpacity>
+        <Text style={styles.title}>Team Formation Planner</Text>
+        <View style={styles.headerRight}>
+          <Text style={styles.subCount}>{substitutePlayers.length} subs</Text>
+        </View>
       </View>
 
       <View style={styles.controls}>
@@ -345,13 +390,6 @@ export default function FormationScreen() {
         <TouchableOpacity style={styles.controlButton} onPress={resetPositions}>
           <Icon name="refresh" size={16} color={colors.background} />
           <Text style={styles.controlButtonText}>Reset</Text>
-        </TouchableOpacity>
-        <TouchableOpacity 
-          style={styles.controlButton} 
-          onPress={() => setShowSubstitutes(true)}
-        >
-          <Icon name="swap-horizontal" size={16} color={colors.background} />
-          <Text style={styles.controlButtonText}>Subs ({substitutePlayers.length})</Text>
         </TouchableOpacity>
       </View>
 
@@ -406,62 +444,56 @@ export default function FormationScreen() {
             key={player.id}
             player={player}
             onPositionChange={handlePositionChange}
+            onDragToSubBench={handleDragToSubBench}
             fieldWidth={fieldDimensions.width}
             fieldHeight={fieldDimensions.height}
+            subBenchHeight={SUB_BENCH_HEIGHT}
           />
         ))}
       </View>
 
-      <View style={styles.footer}>
-        <Text style={styles.instruction}>
-          Drag players to position them on the GAA pitch
-        </Text>
-        <Text style={styles.gaaInfo}>
-          GAA pitch: 130-145m × 80-90m with H-shaped goals at top and bottom
-        </Text>
-        <Text style={styles.designerNote}>Designed by Paul Halton</Text>
-      </View>
-
-      {/* Substitutes Bottom Sheet */}
-      <SimpleBottomSheet 
-        isVisible={showSubstitutes} 
-        onClose={() => setShowSubstitutes(false)}
-      >
-        <View style={styles.bottomSheetContent}>
-          <View style={styles.bottomSheetHeader}>
-            <Text style={styles.bottomSheetTitle}>Substitutes</Text>
-            <TouchableOpacity onPress={() => setShowSubstitutes(false)}>
-              <Icon name="close" size={24} color={colors.text} />
-            </TouchableOpacity>
-          </View>
-          
+      {/* Substitution Bench */}
+      <View style={styles.subBench}>
+        <View style={styles.subBenchHeader}>
+          <Icon name="people" size={20} color={colors.text} />
+          <Text style={styles.subBenchTitle}>Substitution Bench</Text>
+          <Text style={styles.subBenchCount}>({substitutePlayers.length})</Text>
+        </View>
+        
+        <ScrollView 
+          horizontal 
+          style={styles.subBenchScroll}
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.subBenchContent}
+        >
           {substitutePlayers.length === 0 ? (
-            <View style={styles.noSubstitutes}>
-              <Icon name="checkmark-circle" size={48} color={colors.accent} />
-              <Text style={styles.noSubstitutesText}>All available players are on the field!</Text>
+            <View style={styles.emptySubBench}>
+              <Icon name="checkmark-circle" size={32} color={colors.accent} />
+              <Text style={styles.emptySubBenchText}>All players on field</Text>
             </View>
           ) : (
-            <ScrollView style={styles.substitutesList} showsVerticalScrollIndicator={false}>
-              <Text style={styles.substitutesInstruction}>
-                Tap a substitute to swap them with a field player
-              </Text>
-              <View style={styles.substitutesGrid}>
-                {substitutePlayers.map((player) => (
-                  <DraggablePlayer
-                    key={player.id}
-                    player={player}
-                    onPositionChange={() => {}}
-                    onPlayerSwap={handlePlayerSwap}
-                    fieldWidth={0}
-                    fieldHeight={0}
-                    isSubstitute={true}
-                  />
-                ))}
-              </View>
-            </ScrollView>
+            substitutePlayers.map((player) => (
+              <DraggablePlayer
+                key={player.id}
+                player={player}
+                onPositionChange={() => {}}
+                onPlayerSwap={handlePlayerSwap}
+                fieldWidth={0}
+                fieldHeight={0}
+                isSubstitute={true}
+              />
+            ))
           )}
-        </View>
-      </SimpleBottomSheet>
+        </ScrollView>
+        
+        <Text style={styles.subBenchInstruction}>
+          Tap substitutes to swap with field players • Drag field players here to substitute
+        </Text>
+      </View>
+
+      <View style={styles.footer}>
+        <Text style={styles.designerNote}>Designed by Paul Halton</Text>
+      </View>
     </SafeAreaView>
   );
 }
@@ -479,25 +511,13 @@ const styles = StyleSheet.create({
   backButton: {
     padding: 8,
   },
-  menuButton: {
-    padding: 8,
-    position: 'relative',
+  headerRight: {
+    alignItems: 'flex-end',
   },
-  substituteBadge: {
-    position: 'absolute',
-    top: 0,
-    right: 0,
-    backgroundColor: colors.accent,
-    borderRadius: 10,
-    minWidth: 20,
-    height: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  substituteBadgeText: {
-    color: colors.background,
-    fontSize: 12,
-    fontWeight: '700',
+  subCount: {
+    fontSize: 14,
+    color: colors.grey,
+    fontWeight: '600',
   },
   title: {
     fontSize: 20,
@@ -527,7 +547,8 @@ const styles = StyleSheet.create({
   gaaField: {
     flex: 1,
     backgroundColor: '#2E7D32', // GAA green
-    margin: 20,
+    marginHorizontal: 20,
+    marginTop: 10,
     borderRadius: 8,
     position: 'relative',
     borderWidth: 3,
@@ -741,71 +762,65 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  subBench: {
+    height: SUB_BENCH_HEIGHT,
+    backgroundColor: colors.backgroundAlt,
+    borderTopWidth: 2,
+    borderTopColor: colors.accent,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+  },
+  subBenchHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 10,
+    gap: 8,
+  },
+  subBenchTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.text,
+    flex: 1,
+  },
+  subBenchCount: {
+    fontSize: 14,
+    color: colors.grey,
+    fontWeight: '600',
+  },
+  subBenchScroll: {
+    flex: 1,
+  },
+  subBenchContent: {
+    alignItems: 'center',
+    paddingVertical: 5,
+  },
+  emptySubBench: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 20,
+  },
+  emptySubBenchText: {
+    fontSize: 14,
+    color: colors.grey,
+    marginTop: 5,
+    fontStyle: 'italic',
+  },
+  subBenchInstruction: {
+    fontSize: 12,
+    color: colors.grey,
+    textAlign: 'center',
+    fontStyle: 'italic',
+    marginTop: 5,
+  },
   footer: {
     paddingHorizontal: 20,
-    paddingVertical: 15,
-    borderTopWidth: 1,
-    borderTopColor: colors.backgroundAlt,
+    paddingVertical: 10,
     alignItems: 'center',
-  },
-  instruction: {
-    color: colors.grey,
-    fontSize: 14,
-    textAlign: 'center',
-    fontStyle: 'italic',
-    marginBottom: 4,
-  },
-  gaaInfo: {
-    color: colors.grey,
-    fontSize: 12,
-    textAlign: 'center',
-    fontStyle: 'italic',
-    marginBottom: 8,
   },
   designerNote: {
     fontSize: 12,
     color: colors.grey,
     fontStyle: 'italic',
-  },
-  bottomSheetContent: {
-    padding: 20,
-    maxHeight: 400,
-  },
-  bottomSheetHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  bottomSheetTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: colors.text,
-  },
-  noSubstitutes: {
-    alignItems: 'center',
-    paddingVertical: 40,
-  },
-  noSubstitutesText: {
-    fontSize: 16,
-    color: colors.text,
-    textAlign: 'center',
-    marginTop: 10,
-  },
-  substitutesList: {
-    maxHeight: 300,
-  },
-  substitutesInstruction: {
-    fontSize: 14,
-    color: colors.grey,
-    textAlign: 'center',
-    marginBottom: 15,
-    fontStyle: 'italic',
-  },
-  substitutesGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'center',
-    gap: 10,
   },
 });

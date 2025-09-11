@@ -19,7 +19,7 @@ export default function MainScreen() {
       <View style={styles.content}>
         <View style={styles.header}>
           <Icon name="football" size={80} color={colors.accent} />
-          <Text style={styles.title}>Team Formation Planned</Text>
+          <Text style={styles.title}>Team Formation Planner</Text>
           <Text style={styles.subtitle}>
             Create flexible football formations with any number of players
           </Text>
